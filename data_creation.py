@@ -4,53 +4,85 @@ import pandas as pd
 
 np.random.seed(42)
 
-TRAIN_DIR = "data/train"
-TEST_DIR = "data/test"
+TRAIN_DIR = "train"
+TEST_DIR = "test"
 
 
-def create_temperature_dataset(start_date, days=30, anomaly_fraction=0.1):
+def create_temperature_dataset(start_date, days=30, add_anomalies=False, noise_level=1.5):
     dates = pd.date_range(start=start_date, periods=days, freq="D")
+    day_of_year = dates.dayofyear.values
 
-    # Базовая температура: плавное изменение + шум
-    base = 10 + 8 * np.sin(np.linspace(0, 3 * np.pi, days))
-    noise = np.random.normal(0, 1.5, days)
-    temperature = base + noise
+    # Температура зависит от РЕАЛЬНОГО дня года
+    temperature = 15 + 10 * np.sin(2 * np.pi * day_of_year / 365)
+
+    # Добавляем шум
+    noise = np.random.normal(0, noise_level, days)
+    temperature = temperature + noise
 
     is_anomaly = np.zeros(days, dtype=int)
 
-    # Добавляем аномалии
-    n_anomalies = max(1, int(days * anomaly_fraction))
-    anomaly_indices = np.random.choice(days, n_anomalies, replace=False)
+    if add_anomalies:
+        anomaly_count = 3
+        anomaly_indices = np.random.choice(days, anomaly_count, replace=False)
 
-    for idx in anomaly_indices:
-        jump = np.random.choice([10, -10, 12, -12])
-        temperature[idx] += jump
-        is_anomaly[idx] = 1
+        for idx in anomaly_indices:
+            jump = np.random.choice([10, -10, 12, -12])
+            temperature[idx] += jump
+            is_anomaly[idx] = 1
 
     df = pd.DataFrame({
         "date": dates.strftime("%Y-%m-%d"),
-        "temperature": np.round(temperature, 1),
+        "temperature": np.round(temperature, 2),
         "is_anomaly": is_anomaly
     })
 
     return df
 
 
+def prepare_folder(folder):
+    os.makedirs(folder, exist_ok=True)
+    for file_name in os.listdir(folder):
+        if file_name.endswith(".csv"):
+            os.remove(os.path.join(folder, file_name))
+
+
 def main():
-    os.makedirs(TRAIN_DIR, exist_ok=True)
-    os.makedirs(TEST_DIR, exist_ok=True)
+    prepare_folder(TRAIN_DIR)
+    prepare_folder(TEST_DIR)
 
-    # train наборы
-    for i in range(5):
-        df = create_temperature_dataset(start_date=f"2024-01-{1+i:02d}", days=30)
-        df.to_csv(f"{TRAIN_DIR}/weather_train_{i}.csv", index=False)
+    train_configs = [
+        ("2024-01-01", False, 1.0),
+        ("2024-02-01", True, 1.5),
+        ("2024-03-01", False, 1.2),
+        ("2024-04-01", True, 1.3),
+    ]
 
-    # test наборы
-    for i in range(2):
-        df = create_temperature_dataset(start_date=f"2024-03-{1+i:02d}", days=30)
-        df.to_csv(f"{TEST_DIR}/weather_test_{i}.csv", index=False)
+    for i, (start_date, add_anomalies, noise_level) in enumerate(train_configs):
+        df = create_temperature_dataset(
+            start_date=start_date,
+            days=30,
+            add_anomalies=add_anomalies,
+            noise_level=noise_level
+        )
+        df.to_csv(os.path.join(TRAIN_DIR, f"weather_train_{i}.csv"), index=False)
 
-    print("Данные созданы.")
+    test_configs = [
+        ("2024-05-01", False, 1.1),
+        ("2024-06-01", True, 1.4),
+    ]
+
+    for i, (start_date, add_anomalies, noise_level) in enumerate(test_configs):
+        df = create_temperature_dataset(
+            start_date=start_date,
+            days=30,
+            add_anomalies=add_anomalies,
+            noise_level=noise_level
+        )
+        df.to_csv(os.path.join(TEST_DIR, f"weather_test_{i}.csv"), index=False)
+
+    print("Данные успешно созданы.")
+    print(f"Train файлов: {len(train_configs)}")
+    print(f"Test файлов: {len(test_configs)}")
 
 
 if __name__ == "__main__":
